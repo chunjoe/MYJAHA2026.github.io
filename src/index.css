@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 確保全域字型設定生效 */
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background-color: #f8fafc; /* bg-slate-50 */
+}
