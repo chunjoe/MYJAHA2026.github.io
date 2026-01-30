@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Heart, 
   Activity, 
@@ -18,6 +18,182 @@ import {
 const PaperPresentation = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const heroRef = useRef<HTMLElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Canvas Particle System
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = canvas.width = canvas.offsetWidth;
+    let height = canvas.height = canvas.offsetHeight;
+
+    const layers = [
+      { x: 0.08, nodes: [0.15, 0.30, 0.45, 0.60, 0.75] }, // Input
+      { x: 0.28, nodes: [0.20, 0.35, 0.50, 0.65, 0.80] }, // Hidden 1
+      { x: 0.48, nodes: [0.22, 0.38, 0.54, 0.70] },       // Hidden 2
+      { x: 0.68, nodes: [0.25, 0.42, 0.58, 0.75] },       // Hidden 3
+      { x: 0.88, nodes: [0.35, 0.50, 0.65] }              // Output
+    ];
+
+    class Particle {
+      x: number;
+      y: number;
+      layerIndex: number;
+      targetLayerIndex: number;
+      targetX: number;
+      targetY: number;
+      speed: number;
+      color: string;
+      size: number;
+      history: { x: number, y: number }[];
+
+      constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.layerIndex = 0;
+        this.targetLayerIndex = 0;
+        this.targetX = 0;
+        this.targetY = 0;
+        this.speed = 0;
+        this.color = '';
+        this.size = 0;
+        this.history = [];
+        this.reset();
+      }
+
+      reset() {
+        // Start at random input node
+        this.layerIndex = 0;
+        const startNodeY = layers[0].nodes[Math.floor(Math.random() * layers[0].nodes.length)];
+        this.x = width * layers[0].x;
+        this.y = height * startNodeY;
+        
+        this.setNextTarget();
+        
+        this.speed = 0.5 + Math.random() * 0.8; // 更慢的速度
+        const colors = ['#60a5fa', '#2dd4bf', '#a78bfa', '#38bdf8'];
+        this.color = colors[Math.floor(Math.random() * colors.length)];
+        this.size = 2 + Math.random() * 2;
+        this.history = []; // Clear history on reset
+      }
+
+      setNextTarget() {
+        this.targetLayerIndex = this.layerIndex + 1;
+        
+        if (this.targetLayerIndex >= layers.length) {
+          this.reset();
+          return;
+        }
+
+        const nextLayer = layers[this.targetLayerIndex];
+        const randomNodeY = nextLayer.nodes[Math.floor(Math.random() * nextLayer.nodes.length)];
+        
+        this.targetX = width * nextLayer.x;
+        this.targetY = height * randomNodeY;
+      }
+
+      update() {
+        const dx = this.targetX - this.x;
+        const dy = this.targetY - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 5) {
+          this.layerIndex = this.targetLayerIndex;
+          this.x = this.targetX;
+          this.y = this.targetY;
+          this.setNextTarget();
+        } else {
+          this.x += (dx / dist) * this.speed;
+          this.y += (dy / dist) * this.speed;
+        }
+
+        // Add to history for trail
+        this.history.push({ x: this.x, y: this.y });
+        if (this.history.length > 20) {
+          this.history.shift();
+        }
+      }
+
+      draw(ctx: CanvasRenderingContext2D) {
+        // Draw trail
+        if (this.history.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(this.history[0].x, this.history[0].y);
+          for (let i = 1; i < this.history.length; i++) {
+            ctx.lineTo(this.history[i].x, this.history[i].y);
+          }
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = this.size / 2;
+          ctx.globalAlpha = 0.08;
+          ctx.stroke();
+        }
+
+        // Draw particle head
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = 0.3;
+        ctx.fill();
+        
+        // Glow
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = this.color;
+      }
+    }
+
+    const particles: Particle[] = [];
+    for (let i = 0; i < 40; i++) {
+      const p = new Particle();
+      // Randomize initial progress through layers to avoid bunching
+      if (Math.random() > 0.1) {
+          const lIndex = Math.floor(Math.random() * (layers.length - 1));
+          p.layerIndex = lIndex;
+          const layer = layers[lIndex];
+          p.x = width * layer.x;
+          p.y = height * layer.nodes[Math.floor(Math.random() * layer.nodes.length)];
+          p.setNextTarget();
+          
+          // Move it a bit along the path
+          const progress = Math.random();
+          p.x += (p.targetX - p.x) * progress;
+          p.y += (p.targetY - p.y) * progress;
+      }
+      particles.push(p);
+    }
+
+    let animationFrameId: number;
+
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+      
+      particles.forEach(p => {
+        p.update();
+        p.draw(ctx);
+      });
+      ctx.shadowBlur = 0; // Reset
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    const handleResize = () => {
+      width = canvas.width = canvas.offsetWidth;
+      height = canvas.height = canvas.offsetHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
 
   const sections = [
     { id: 'problem', title: '問題與挑戰' },
@@ -35,12 +211,124 @@ const PaperPresentation = () => {
     setIsMobileMenuOpen(false);
   };
 
+  // Handle mouse move for node interaction
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (heroRef.current) {
+        const rect = heroRef.current.getBoundingClientRect();
+        setMousePos({
+          x: ((e.clientX - rect.left) / rect.width) * 100,
+          y: ((e.clientY - rect.top) / rect.height) * 100
+        });
+      }
+    };
+    
+    const hero = heroRef.current;
+    if (hero) {
+      hero.addEventListener('mousemove', handleMouseMove);
+      return () => hero.removeEventListener('mousemove', handleMouseMove);
+    }
+  }, []);
+
+  // Calculate node offset based on mouse position
+  const getNodeOffset = (nodeX: number, nodeY: number) => {
+    const dx = mousePos.x - nodeX;
+    const dy = mousePos.y - nodeY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const maxDistance = 25;
+    const maxOffset = 12;
+    
+    if (distance < maxDistance) {
+      const force = (maxDistance - distance) / maxDistance;
+      return {
+        x: -dx * force * maxOffset * 0.15,
+        y: -dy * force * maxOffset * 0.15
+      };
+    }
+    return { x: 0, y: 0 };
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800" style={{ fontFamily: '"Noto Sans TC", sans-serif' }}>
       {/* Import Noto Sans TC font */}
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
+          
+          @keyframes nodeGlow {
+            0%, 100% { 
+              filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6));
+              opacity: 0.8;
+            }
+            50% { 
+              filter: drop-shadow(0 0 12px rgba(59, 130, 246, 1));
+              opacity: 1;
+            }
+          }
+          
+          @keyframes flowPulse1 {
+            0% { stroke-dashoffset: 200; opacity: 0; }
+            10% { opacity: 0.9; }
+            50% { opacity: 1; }
+            90% { opacity: 0.9; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+          }
+          
+          @keyframes flowPulse2 {
+            0% { stroke-dashoffset: 180; opacity: 0; }
+            12% { opacity: 0.85; }
+            50% { opacity: 1; }
+            88% { opacity: 0.85; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+          }
+          
+          @keyframes flowPulse3 {
+            0% { stroke-dashoffset: 220; opacity: 0; }
+            8% { opacity: 0.95; }
+            50% { opacity: 1; }
+            92% { opacity: 0.95; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+          }
+          
+          .nn-node {
+            animation: nodeGlow 3s ease-in-out infinite;
+            transition: transform 0.15s ease-out;
+          }
+          
+          .nn-connection-bg {
+            opacity: 0.45;
+          }
+          
+          .nn-flow-1 {
+            stroke-dasharray: 20 180;
+            animation: flowPulse1 1.4s ease-in-out infinite;
+          }
+          
+          .nn-flow-2 {
+            stroke-dasharray: 18 182;
+            animation: flowPulse2 1.1s ease-in-out infinite;
+          }
+          
+          .nn-flow-3 {
+            stroke-dasharray: 22 178;
+            animation: flowPulse3 1.7s ease-in-out infinite;
+          }
+          
+          @keyframes energyTravel {
+            0% { offset-distance: 0%; opacity: 0; }
+            8% { opacity: 1; }
+            92% { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+          }
+          
+          @keyframes particlePulse {
+            0%, 100% { r: 4; filter: drop-shadow(0 0 6px currentColor); }
+            50% { r: 6; filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 20px currentColor); }
+          }
+          
+          .energy-particle {
+            animation: energyTravel var(--duration, 3s) linear forwards;
+          }
         `}
       </style>
 
@@ -106,13 +394,159 @@ const PaperPresentation = () => {
       </nav>
 
       {/* Hero Section */}
-      <header className="relative bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white pt-24 pb-32 overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20">
+      <header ref={heroRef} className="relative bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white pt-24 pb-32 overflow-hidden">
+        {/* Neural Network Particles Canvas */}
+        <canvas 
+          ref={canvasRef} 
+          className="absolute top-0 left-0 w-full h-full pointer-events-none" 
+          style={{ zIndex: 1 }} 
+        />
+        {/* Deep Neural Network Background */}
+        <svg className="absolute top-0 left-0 w-full h-full" style={{ zIndex: 1, opacity: 0.45 }}>
+          <defs>
+            <linearGradient id="connectionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style={{ stopColor: '#3b82f6', stopOpacity: 0.5 }} />
+              <stop offset="100%" style={{ stopColor: '#06b6d4', stopOpacity: 0.5 }} />
+            </linearGradient>
+            {/* Gradient 1: Blue to Cyan */}
+            <linearGradient id="flowGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style={{ stopColor: '#3b82f6', stopOpacity: 0 }} />
+              <stop offset="20%" style={{ stopColor: '#60a5fa', stopOpacity: 1 }} />
+              <stop offset="50%" style={{ stopColor: '#22d3ee', stopOpacity: 1 }} />
+              <stop offset="80%" style={{ stopColor: '#06b6d4', stopOpacity: 1 }} />
+              <stop offset="100%" style={{ stopColor: '#06b6d4', stopOpacity: 0 }} />
+            </linearGradient>
+            {/* Gradient 2: Purple to Pink */}
+            <linearGradient id="flowGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style={{ stopColor: '#8b5cf6', stopOpacity: 0 }} />
+              <stop offset="25%" style={{ stopColor: '#a78bfa', stopOpacity: 1 }} />
+              <stop offset="50%" style={{ stopColor: '#c084fc', stopOpacity: 1 }} />
+              <stop offset="75%" style={{ stopColor: '#e879f9', stopOpacity: 1 }} />
+              <stop offset="100%" style={{ stopColor: '#f0abfc', stopOpacity: 0 }} />
+            </linearGradient>
+            {/* Gradient 3: Teal to Green */}
+            <linearGradient id="flowGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style={{ stopColor: '#14b8a6', stopOpacity: 0 }} />
+              <stop offset="20%" style={{ stopColor: '#2dd4bf', stopOpacity: 1 }} />
+              <stop offset="50%" style={{ stopColor: '#34d399', stopOpacity: 1 }} />
+              <stop offset="80%" style={{ stopColor: '#4ade80', stopOpacity: 1 }} />
+              <stop offset="100%" style={{ stopColor: '#86efac', stopOpacity: 0 }} />
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <filter id="flowGlow">
+              <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <filter id="superGlow">
+              <feGaussianBlur stdDeviation="6" result="blur1"/>
+              <feGaussianBlur stdDeviation="3" result="blur2"/>
+              <feMerge>
+                <feMergeNode in="blur1"/>
+                <feMergeNode in="blur2"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          
+          {/* Static connection lines (background) */}
+          {[15, 30, 45, 60, 75].map((y1, i) => 
+            [20, 35, 50, 65, 80].map((y2, j) => (
+              <line key={`l1bg-${i}-${j}`} x1="8%" y1={`${y1}%`} x2="28%" y2={`${y2}%`} 
+                stroke="url(#connectionGradient)" strokeWidth="1" className="nn-connection-bg" />
+            ))
+          )}
+          {[20, 35, 50, 65, 80].map((y1, i) => 
+            [22, 38, 54, 70].map((y2, j) => (
+              <line key={`l2bg-${i}-${j}`} x1="28%" y1={`${y1}%`} x2="48%" y2={`${y2}%`} 
+                stroke="url(#connectionGradient)" strokeWidth="1" className="nn-connection-bg" />
+            ))
+          )}
+          {[22, 38, 54, 70].map((y1, i) => 
+            [25, 42, 58, 75].map((y2, j) => (
+              <line key={`l3bg-${i}-${j}`} x1="48%" y1={`${y1}%`} x2="68%" y2={`${y2}%`} 
+                stroke="url(#connectionGradient)" strokeWidth="1" className="nn-connection-bg" />
+            ))
+          )}
+          {[25, 42, 58, 75].map((y1, i) => 
+            [35, 50, 65].map((y2, j) => (
+              <line key={`l4bg-${i}-${j}`} x1="68%" y1={`${y1}%`} x2="88%" y2={`${y2}%`} 
+                stroke="url(#connectionGradient)" strokeWidth="1" className="nn-connection-bg" />
+            ))
+          )}
+          
+          {/* Canvas will be used for particles instead of SVG */}
+          
+          {/* Layer 1 Nodes (Input) - with mouse interaction */}
+          {[15, 30, 45, 60, 75].map((y, i) => {
+            const offset = getNodeOffset(8, y);
+            return (
+              <g key={`n1-${i}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, transition: 'transform 0.15s ease-out' }}>
+                <circle cx="8%" cy={`${y}%`} r="8" fill="#1e3a5f" stroke="#3b82f6" strokeWidth="2" filter="url(#glow)" className="nn-node" style={{ animationDelay: `${i * 0.2}s` }} />
+                <circle cx="8%" cy={`${y}%`} r="4" fill="#3b82f6" className="nn-node" style={{ animationDelay: `${i * 0.2}s` }} />
+              </g>
+            );
+          })}
+          
+          {/* Layer 2 Nodes (Hidden 1) */}
+          {[20, 35, 50, 65, 80].map((y, i) => {
+            const offset = getNodeOffset(28, y);
+            return (
+              <g key={`n2-${i}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, transition: 'transform 0.2s ease-out' }}>
+                <circle cx="28%" cy={`${y}%`} r="7" fill="#1e3a5f" stroke="#06b6d4" strokeWidth="2" filter="url(#glow)" className="nn-node" style={{ animationDelay: `${i * 0.25}s` }} />
+                <circle cx="28%" cy={`${y}%`} r="3.5" fill="#06b6d4" className="nn-node" style={{ animationDelay: `${i * 0.25}s` }} />
+              </g>
+            );
+          })}
+          
+          {/* Layer 3 Nodes (Hidden 2) */}
+          {[22, 38, 54, 70].map((y, i) => {
+            const offset = getNodeOffset(48, y);
+            return (
+              <g key={`n3-${i}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, transition: 'transform 0.15s ease-out' }}>
+                <circle cx="48%" cy={`${y}%`} r="7" fill="#1e3a5f" stroke="#8b5cf6" strokeWidth="2" filter="url(#glow)" className="nn-node" style={{ animationDelay: `${i * 0.3}s` }} />
+                <circle cx="48%" cy={`${y}%`} r="3.5" fill="#8b5cf6" className="nn-node" style={{ animationDelay: `${i * 0.3}s` }} />
+              </g>
+            );
+          })}
+          
+          {/* Layer 4 Nodes (Hidden 3) */}
+          {[25, 42, 58, 75].map((y, i) => {
+            const offset = getNodeOffset(68, y);
+            return (
+              <g key={`n4-${i}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, transition: 'transform 0.15s ease-out' }}>
+                <circle cx="68%" cy={`${y}%`} r="7" fill="#1e3a5f" stroke="#06b6d4" strokeWidth="2" filter="url(#glow)" className="nn-node" style={{ animationDelay: `${i * 0.35}s` }} />
+                <circle cx="68%" cy={`${y}%`} r="3.5" fill="#06b6d4" className="nn-node" style={{ animationDelay: `${i * 0.35}s` }} />
+              </g>
+            );
+          })}
+          
+          {/* Layer 5 Nodes (Output) */}
+          {[35, 50, 65].map((y, i) => {
+            const offset = getNodeOffset(88, y);
+            return (
+              <g key={`n5-${i}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, transition: 'transform 0.15s ease-out' }}>
+                <circle cx="88%" cy={`${y}%`} r="9" fill="#1e3a5f" stroke="#10b981" strokeWidth="2" filter="url(#glow)" className="nn-node" style={{ animationDelay: `${i * 0.4}s` }} />
+                <circle cx="88%" cy={`${y}%`} r="5" fill="#10b981" className="nn-node" style={{ animationDelay: `${i * 0.4}s` }} />
+              </g>
+            );
+          })}
+        </svg>
+        
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20" style={{ zIndex: 2 }}>
           <div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 rounded-full blur-3xl"></div>
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 rounded-full blur-3xl"></div>
         </div>
         
-        <div className="max-w-4xl mx-auto px-4 text-center relative z-10">
+        <div className="max-w-4xl mx-auto px-4 text-center relative z-10" style={{ zIndex: 10 }}>
           <div className="inline-flex items-center gap-2 bg-blue-500/20 border border-blue-400/30 px-3 py-1 rounded-full text-blue-200 text-sm mb-6 backdrop-blur-sm">
             <FileText className="w-4 h-4" />
             <span>Journal of the American Heart Association 2026 (In Press), Impact Factor: 6.106</span>
