@@ -117,10 +117,10 @@ const PaperPresentation = () => {
             <FileText className="w-4 h-4" />
             <span>Journal of the American Heart Association 2026 (In Press), Impact Factor: 6.106</span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-            具備可解釋性與真實世界經驗的<br />
+          <h1 className="text-3xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-teal-300">
-              瓣膜逆流自動化分類系統
+              Automated classification of mitral and tricuspid regurgitation<br />
+              with explainability and real-world practice experience
             </span>
           </h1>
           <p className="text-lg md:text-xl text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed font-light">
